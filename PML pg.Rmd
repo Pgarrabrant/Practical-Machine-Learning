@@ -1,0 +1,137 @@
+---
+title: "PracticalMachineLearning pg"
+author: "Patrick Garrabrant, CLU"
+date: "August 20, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Practical Machine Learning Assignment
+
+This is the Practical Machine Learning Assignment.  We are taking data and trying to predict which set of exercises it belongs to; A, B, C, D or E.  They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. :
+
+
+```{r }
+
+library(caret)
+library(rpart)
+
+library(rattle)
+```
+
+## Data
+
+Loading the data and removing the columns that have NAs. None of the movement columns seem to have NAs, just some columns with only a few data elements. I am also going to remove the first 7 columns as they seem to just log when the exercise took place.  The data we want is the 52 columns of the various movements and the 53rd column which is the A, B, C, D, E (column is called "classe")
+
+```{r Data, echo=TRUE}
+AllData <- read.csv("pml-training.csv", na.strings= c("NA", " ","#DIV/0!"))
+dim(AllData)
+
+# Get rid of columns with NAs
+
+K <- is.na(AllData)
+
+TossOut <- which (colSums(K)>1)
+
+Data <- AllData[ , -TossOut]
+dim(Data)
+
+table(complete.cases(Data))
+
+ProjectData <- Data[ , -c(1:7), drop=FALSE]
+dim(ProjectData)
+```
+
+## Split
+
+Splitting the information into Testing and Training Data.  We'll test our models on 30% of the Data.  We will then use the model we pick to forecast the 20 rows for the quiz assignment.
+
+```{r Split, echo=TRUE}
+
+Split<- createDataPartition(ProjectData$classe, p=0.7, list=FALSE)
+
+TrainingProj<- ProjectData[Split, ]
+TestingProj <- ProjectData[-Split, ]
+```
+
+## RPart
+
+The first model we will test is a decision tree.
+
+```{r , echo=TRUE}
+Rpart<- train(classe~., method="rpart", data=TrainingProj)
+print(Rpart$finalModel)
+
+fancyRpartPlot(Rpart$finalModel)
+
+
+PredictRPart <- predict(Rpart, TestingProj)
+
+ table(PredictRPart, TestingProj$classe)
+
+confPart<- confusionMatrix(PredictRPart, TestingProj$classe)
+confPart
+
+
+```
+
+That accuracy was only 48.8 so hopefully something else will work (or maybe I didn't give it enough iterations)
+
+## Random Forest
+
+We will now look at a Random Forest Model
+
+```{r , echo=TRUE}
+RForest<-train(classe~., method="rf", data=TrainingProj)
+MRForest<-predict(RForest, newdata = TestingProj)
+
+confMForest<- confusionMatrix(MRForest, TestingProj$classe)
+confMForest
+plot(RForest)
+
+
+```
+
+That came out at 99% so that is looking good.
+
+## GBM
+
+We will now look at final model
+
+```{r , echo=TRUE}
+GBM<- train(classe~., data=TrainingProj, verbose=FALSE, method="gbm")
+
+GBM$finalModel
+modGBM<- predict(GBM, newdata=TestingProj)
+
+CFMgbm<- confusionMatrix(modGBM, TestingProj$classe)
+CFMgbm
+
+plot(CFMgbm$table, col = CFMgbm$byClass)
+```
+
+This model also seems to work.  
+
+## RESULTS
+
+Part of the assignment asks us to compare the models.  
+
+```{r , echo=TRUE}
+Results <- data.frame(
+Model= c("rpart", "RF", "GBM"),
+Accuracy = rbind(confPart$overall[1], confMForest$overall[1],CFMgbm$overall[1]))
+print(Results)
+```
+
+## 20 Real Tests
+
+We will now apply the Random Forest model to the 20 data elements.  I plugged these into the quiz and received a 20 out of 20 so that feels good.
+
+```{r , echo=TRUE}
+TEST<-read.csv("pml-testing.csv", na.strings= c("NA", " ","#DIV/0!"))
+ result<- predict(RForest, TEST)
+ result
+```
